@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
+	"ws-streamer/onvif"
 
 	"github.com/gorilla/websocket"
 )
@@ -44,6 +47,10 @@ var (
 			return strings.ToLower(r.Header.Get("Origin")) == origin
 		},
 	}
+
+	camera *onvif.Camera
+
+	done = make(chan struct{})
 )
 
 type (
@@ -60,6 +67,13 @@ type (
 )
 
 func main() {
+	log.SetPrefix("[ws-streamer]")
+	log.SetFlags(log.LstdFlags)
+	ShutdownHandler()
+
+	camera = &onvif.Camera{}
+	camera.Start()
+
 	if cfg, err := loadConfig(); err == nil {
 		origin = cfg.Origin
 		cameraIP = cfg.CameraIP
@@ -91,8 +105,12 @@ func main() {
 
 	http.HandleFunc("/", wsHandler)
 	go runFFmpeg()
-	println("ws-streamer-go started...")
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+	log.Println("ws-streamer-go started...")
+	go func() {
+		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+	}()
+
+	<-done
 }
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
@@ -121,14 +139,18 @@ func handleClient(conn *websocket.Conn) {
 		mutex.Unlock()
 	}()
 
+	addr := conn.RemoteAddr().String()
+	log.Printf("[%s]client-runner start.\n", addr)
 	for {
 		if _, _, err := conn.NextReader(); err != nil {
 			break
 		}
 	}
+	log.Printf("[%s]client-runner stop.\n", addr)
 }
 
 func runFFmpeg() {
+	log.Println("ffmpeg-runner start.")
 	for {
 		mutex.Lock()
 		needStart := len(clients) != 0 && ffmpegCmd == nil
@@ -156,12 +178,12 @@ func runFFmpeg() {
 		}
 
 		if restartCount >= maxRestarts {
-			return
+			break
 		}
 
 		restartCount = 0
 
-		cmd.Wait()
+		err := cmd.Wait()
 
 		mutex.Lock()
 		needRestart := len(clients) > 0
@@ -169,11 +191,16 @@ func runFFmpeg() {
 
 		if needRestart {
 			restartCount++
-			log.Println("ffmpeg crashed – restart in 3 seconds...")
+			if err != nil {
+				log.Printf("ffmpeg crashed %s – restart in 3 seconds...\n", err.Error())
+			} else {
+				log.Println("ffmpeg exited for unkown reason – restart in 3 seconds...")
+			}
 			time.Sleep(restartDelay)
 			continue
 		}
 	}
+	log.Println("ffmpeg-runner stop.")
 }
 
 func startFFmpeg() (io.ReadCloser, io.ReadCloser, error) {
@@ -198,8 +225,7 @@ func startFFmpeg() (io.ReadCloser, io.ReadCloser, error) {
 		return nil, nil, err
 	}
 
-	fmt.Printf("ffmpegCmd: %v\n", ffmpegCmd)
-	fmt.Println("Starting ffmpeg (PIPE mode)...")
+	log.Println("Starting ffmpeg (PIPE mode)...")
 	if err := ffmpegCmd.Start(); err != nil {
 		log.Println("Error starting ffmpeg:", err)
 		ffmpegCmd = nil
@@ -215,22 +241,28 @@ func runPipeStream(pipe io.ReadCloser, errpipe io.ReadCloser) {
 	}()
 
 	buf := make([]byte, 8*1024)
-	println("PIPE stream started...")
+	log.Println("PIPE stream started...")
 
 	go func() {
 		errbuf := make([]byte, 8*1024)
 
+		log.Println("ffmpeg-errorpipe-runner start.")
 		for {
 			n, err := errpipe.Read(errbuf)
 			if err == nil {
 				if n > 0 {
 					log.Printf("ffmpeg stderr: %s", string(errbuf[:n]))
 				}
+			} else {
+				break
 			}
 		}
 
+		log.Println("ffmpeg-errorpipe-runner stop.")
+
 	}()
 
+	log.Println("ffmpeg-streampipe-runner start.")
 	for {
 		n, err := pipe.Read(buf)
 		if err != nil {
@@ -268,6 +300,8 @@ func runPipeStream(pipe io.ReadCloser, errpipe io.ReadCloser) {
 			stopFFmpeg()
 		}
 	}
+
+	log.Println("ffmpeg-streampipe-runner stop.")
 }
 
 func stopFFmpeg() {
@@ -297,4 +331,27 @@ func loadConfig() (*config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+func ShutdownHandler() {
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigs
+		log.Println("Shutting down ws-streamer-go...")
+		log.Println("Close all connected clients...")
+		mutex.Lock()
+		for c := range clients {
+			delete(clients, c)
+		}
+		if ffmpegCmd != nil {
+			log.Println("Shutting down ffmpeg...")
+			ffmpegCmd.Process.Kill()
+		}
+		mutex.Unlock()
+		camera.Stop()
+		close(done)
+	}()
 }
