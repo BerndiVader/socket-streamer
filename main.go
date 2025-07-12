@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -10,11 +8,11 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+	"ws-streamer/config"
 	"ws-streamer/onvif"
 
 	"github.com/gorilla/websocket"
@@ -26,15 +24,8 @@ const (
 )
 
 var (
-	origin     string = "http://localhost"
-	selfIP     string = "111.111.111.111"
-	cameraIP   string = "111.111.111.111"
-	username   string = "user"
-	password   string = "password"
-	rtspURL    string
-	ffmpegPath string = "ffmpeg"
-	quality    string = "sub"
-	port       int    = 1510
+	cfg    *config.Config
+	camera *onvif.Camera
 
 	mutex   sync.Mutex
 	clients = map[*websocket.Conn]bool{}
@@ -44,26 +35,10 @@ var (
 
 	upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
-			return strings.ToLower(r.Header.Get("Origin")) == origin
+			return strings.ToLower(r.Header.Get("Origin")) == cfg.Origin
 		},
 	}
-
-	camera *onvif.Camera
-
 	done = make(chan struct{})
-)
-
-type (
-	config struct {
-		Origin     string `json:"origin"`
-		SelfIP     string `json:"host_ip"`
-		CameraIP   string `json:"camera_ip"`
-		Username   string `json:"user"`
-		Password   string `json:"pass"`
-		FFmpegpath string `json:"ffmpeg_path"`
-		Quality    string `json:"quality"`
-		Port       int    `json:"port"`
-	}
 )
 
 func main() {
@@ -71,43 +46,13 @@ func main() {
 	log.SetFlags(log.LstdFlags)
 	ShutdownHandler()
 
-	camera = &onvif.Camera{}
-	camera.Start()
-
-	if cfg, err := loadConfig(); err == nil {
-		origin = cfg.Origin
-		cameraIP = cfg.CameraIP
-		username = cfg.Username
-		password = cfg.Password
-		ffmpegPath = cfg.FFmpegpath
-		quality = cfg.Quality
-		selfIP = cfg.SelfIP
-		port = cfg.Port
-	}
-
-	flag.StringVar(&origin, "origin", origin, "domain origin name")
-	flag.StringVar(&cameraIP, "camera_ip", cameraIP, "camera IP address")
-	flag.StringVar(&username, "user", username, "camera login name")
-	flag.StringVar(&password, "pass", password, "camera user password")
-	flag.StringVar(&selfIP, "host_ip", selfIP, "host IP address")
-	flag.IntVar(&port, "port", 1510, "websocket server port")
-	flag.StringVar(&ffmpegPath, "ffmpeg_path", ffmpegPath, "path to ffmpeg")
-	flag.StringVar(&quality, "quality", quality, "quality: high/low")
-	flag.Parse()
-
-	if strings.ToLower(quality) == "high" {
-		quality = "main"
-	} else {
-		quality = "sub"
-	}
-
-	rtspURL = fmt.Sprintf("rtsp://%s:%s@%s:554/h264Preview_01_%s", username, password, cameraIP, quality)
+	cfg = config.NewConfig()
 
 	http.HandleFunc("/", wsHandler)
 	go runFFmpeg()
 	log.Println("ws-streamer-go started...")
 	go func() {
-		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", cfg.Port), nil))
 	}()
 
 	<-done
@@ -204,13 +149,13 @@ func runFFmpeg() {
 }
 
 func startFFmpeg() (io.ReadCloser, io.ReadCloser, error) {
-	ffmpegCmd = exec.Command(ffmpegPath,
+	ffmpegCmd = exec.Command(cfg.FFmpegPath,
 		"-loglevel", "warning",
 		"-rtsp_transport", "tcp",
 		"-fflags", "+genpts",
 		"-analyzeduration", "500000",
 		"-probesize", "512k",
-		"-i", rtspURL,
+		"-i", cfg.RTSPURL,
 		"-map", "0:v",
 		"-c:v", "copy",
 		"-f", "mpegts",
@@ -315,24 +260,6 @@ func stopFFmpeg() {
 	mutex.Unlock()
 }
 
-func loadConfig() (*config, error) {
-	exe, _ := os.Executable()
-	conf := filepath.Join(filepath.Dir(exe), "ws-streamer.conf")
-	conf = strings.ReplaceAll(conf, "\\", "/")
-
-	f, err := os.Open(conf)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	var cfg config
-	decoder := json.NewDecoder(f)
-	if err := decoder.Decode(&cfg); err != nil {
-		return nil, err
-	}
-	return &cfg, nil
-}
-
 func ShutdownHandler() {
 
 	sigs := make(chan os.Signal, 1)
@@ -351,7 +278,9 @@ func ShutdownHandler() {
 			ffmpegCmd.Process.Kill()
 		}
 		mutex.Unlock()
-		camera.Stop()
+		if camera != nil {
+			camera.Stop()
+		}
 		close(done)
 	}()
 }
