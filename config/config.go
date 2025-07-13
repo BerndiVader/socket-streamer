@@ -12,14 +12,14 @@ var SigShutdown = make(chan struct{})
 
 type ConfigGlobal struct {
 	LogLevel string         `json:"loglevel"`
+	WShost   string         `json:"ws_host"`
+	WSPort   int            `json:"ws_port"`
 	Cameras  []ConfigCamera `json:"cameras"`
 }
 
 type ConfigCamera struct {
 	Name       string `json:"name"`
 	RTSPURL    string `json:"rtsp_url"`
-	WShost     string `json:"ws_host"`
-	WSPort     int    `json:"ws_port"`
 	WSPath     string `json:"ws_path"`
 	Origin     string `json:"origin"`
 	FFmpegPath string `json:"ffmpeg_path"`

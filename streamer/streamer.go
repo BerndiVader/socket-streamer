@@ -1,7 +1,6 @@
 package streamer
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -78,9 +77,6 @@ func (s *Streamer) Start() {
 
 	go s.runFFmpeg()
 	log.Println("ws-streamer-go started...")
-	go func() {
-		log.Println(http.ListenAndServe(fmt.Sprintf("%s:%d", s.cfg.WShost, s.cfg.WSPort), nil))
-	}()
 
 	<-s.done
 }

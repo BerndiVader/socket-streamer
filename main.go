@@ -2,7 +2,9 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -28,18 +30,24 @@ func main() {
 
 	if len(config.GetCameras()) == 0 {
 		log.Println("No cameras found in config.")
-		close(sigs)
+		sigs <- syscall.SIGTERM
 	} else {
 		for i := range config.GetCameras() {
 			var cfg *config.ConfigCamera = &config.GetCameras()[i]
 			if s := streamer.NewStreamer(cfg); s != nil {
 				log.Printf("Start streaming for %s", cfg.Name)
-				s.Start()
+				go s.Start()
 			} else {
 				log.Printf("Failed to start streaming for %s", cfg.Name)
 			}
 		}
 	}
+
+	go func() {
+		cfg := config.GetConfigGlobal()
+		log.Println(http.ListenAndServe(fmt.Sprintf("%s:%d", cfg.WShost, cfg.WSPort), nil))
+		sigs <- syscall.SIGTERM
+	}()
 
 	<-config.SigShutdown
 
