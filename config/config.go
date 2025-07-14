@@ -50,13 +50,13 @@ func Init(path *string) error {
 			decoder := json.NewDecoder(file)
 			err = decoder.Decode(&global)
 			if err != nil {
-				log.Printf("%s - Error decoding config file.\n", err.Error())
+				log.Printf("%v - Error decoding config file.\n", err)
 			}
 		} else {
-			log.Printf("%s - Error opening config file.\n", err.Error())
+			log.Printf("%v - Error opening config file.\n", err)
 		}
 	} else {
-		log.Printf("%s - Error getting filepath. Use -config to set path to config.\n", err.Error())
+		log.Printf("%v - Error getting filepath. Use -config to set path to config.\n", err)
 	}
 
 	if err == nil {

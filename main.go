@@ -8,11 +8,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 	"ws-streamer/config"
 	"ws-streamer/streamer"
 )
 
 var sigs = make(chan os.Signal, 1)
+var done = make(chan struct{})
 
 func main() {
 	log.SetPrefix("[ws-streamer]")
@@ -29,7 +31,7 @@ func main() {
 	}
 
 	if len(config.GetCameras()) == 0 {
-		log.Println("No cameras found in config.")
+		log.Println("No cameras found in config. Exit.")
 		sigs <- syscall.SIGTERM
 	} else {
 		for i := range config.GetCameras() {
@@ -49,7 +51,7 @@ func main() {
 		sigs <- syscall.SIGTERM
 	}()
 
-	<-config.SigShutdown
+	<-done
 
 }
 
@@ -62,6 +64,8 @@ func ShutdownHandler() {
 		log.Println("Shutting down ws-streamer-go...")
 		log.Println("Close all streamer...")
 		close(config.SigShutdown)
-
+		time.Sleep(3 * time.Second)
+		log.Println("Goodbye!")
+		close(done)
 	}()
 }
