@@ -35,7 +35,7 @@ func main() {
 		sigs <- syscall.SIGTERM
 	} else {
 		for i := range config.GetCameras() {
-			var cfg *config.ConfigCamera = &config.GetCameras()[i]
+			var cfg *config.ConfigCamera = config.GetCameras()[i]
 			if s := streamer.NewStreamer(cfg); s != nil {
 				log.Printf("Start streaming for %s", cfg.Name)
 				go s.Start()

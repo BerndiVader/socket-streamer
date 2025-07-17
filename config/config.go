@@ -11,10 +11,10 @@ import (
 var SigShutdown = make(chan struct{})
 
 type ConfigGlobal struct {
-	LogLevel string         `json:"loglevel"`
-	WShost   string         `json:"ws_host"`
-	WSPort   int            `json:"ws_port"`
-	Cameras  []ConfigCamera `json:"cameras"`
+	LogLevel string          `json:"loglevel"`
+	WShost   string          `json:"ws_host"`
+	WSPort   int             `json:"ws_port"`
+	Cameras  []*ConfigCamera `json:"cameras"`
 }
 
 type ConfigCamera struct {
@@ -25,13 +25,13 @@ type ConfigCamera struct {
 	FFmpegPath string `json:"ffmpeg_path"`
 }
 
-var global ConfigGlobal
+var global *ConfigGlobal
 
 func Init(path *string) error {
 
-	global = ConfigGlobal{
+	global = &ConfigGlobal{
 		LogLevel: "info",
-		Cameras:  make([]ConfigCamera, 0),
+		Cameras:  make([]*ConfigCamera, 0),
 	}
 
 	exe, err := os.Executable()
@@ -67,20 +67,20 @@ func Init(path *string) error {
 }
 
 func GetConfigGlobal() *ConfigGlobal {
-	return &global
+	return global
 }
 
 func GetCamera(name string) *ConfigCamera {
 	name = strings.ToLower(name)
 	for _, cam := range global.Cameras {
 		if strings.ToLower(cam.Name) == name {
-			return &cam
+			return cam
 		}
 
 	}
 	return nil
 }
 
-func GetCameras() []ConfigCamera {
+func GetCameras() []*ConfigCamera {
 	return global.Cameras
 }
