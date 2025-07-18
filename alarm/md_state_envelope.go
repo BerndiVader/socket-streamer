@@ -1,4 +1,4 @@
-package reo
+package alarm
 
 type MdStateEnvelope []struct {
 	Cmd   string `json:"cmd"`

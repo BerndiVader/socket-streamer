@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"ws-streamer/alarm"
 	"ws-streamer/config"
 
 	"github.com/gorilla/websocket"
@@ -25,7 +26,8 @@ var (
 )
 
 type Streamer struct {
-	cfg *config.ConfigCamera
+	cfg   *config.ConfigCamera
+	alarm *alarm.Alarm
 
 	upgrader websocket.Upgrader
 
@@ -57,6 +59,7 @@ func (s *Streamer) unregisterHandler() {
 
 func NewStreamer(c *config.ConfigCamera) *Streamer {
 	s := &Streamer{cfg: c}
+
 	if !s.registerHandler() {
 		return nil
 	}
@@ -65,6 +68,11 @@ func NewStreamer(c *config.ConfigCamera) *Streamer {
 		CheckOrigin: func(r *http.Request) bool {
 			return strings.ToLower(r.Header.Get("Origin")) == s.cfg.Origin
 		},
+	}
+
+	if s.cfg.Tracking {
+		s.alarm = alarm.NewAlarm(s.cfg)
+		go s.alarm.Run()
 	}
 
 	Streamers = append(Streamers, s)

@@ -23,6 +23,10 @@ type ConfigCamera struct {
 	WSPath     string `json:"ws_path"`
 	Origin     string `json:"origin"`
 	FFmpegPath string `json:"ffmpeg_path"`
+	Address    string `json:"addr"`
+	User       string `json:"user"`
+	Password   string `json:"pass"`
+	Tracking   bool   `json:"tracking"`
 }
 
 var global *ConfigGlobal

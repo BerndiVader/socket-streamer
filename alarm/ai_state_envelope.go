@@ -1,4 +1,4 @@
-package reo
+package alarm
 
 type AiStateEnvelope []struct {
 	Cmd   string `json:"cmd"`
