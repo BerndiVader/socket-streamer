@@ -12,7 +12,7 @@ import (
 
 func Test_DetectHumanLoop(t *testing.T) {
 
-	data, err := os.ReadFile("camera.test_conf")
+	data, err := os.ReadFile("camera.conf.test")
 	if err != nil {
 		t.Fatal(err)
 	}
