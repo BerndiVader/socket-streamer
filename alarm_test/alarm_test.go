@@ -6,6 +6,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
+	"os/signal"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 	"ws-streamer/alarm"
@@ -27,8 +31,7 @@ type Alarm struct {
 	aiCooldown      time.Duration
 	aiCheckInterval time.Duration
 	mdCheckInterval time.Duration
-	test_Timeout    chan time.Time
-	StopRecorder    chan struct{}
+	ffmpeg          *exec.Cmd
 }
 
 func Test_DetectHuman(t *testing.T) {
@@ -56,9 +59,17 @@ func Test_DetectHuman(t *testing.T) {
 }
 
 func (c *Alarm) Run(t *testing.T) {
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
 	for {
 		select {
-		case <-c.test_Timeout:
+		case <-time.After(5 * time.Minute):
+			c.stopRec(t)
+			return
+		case <-sigs:
+			c.stopRec(t)
 			return
 		default:
 			motion := c.isMotion(t)
@@ -72,6 +83,7 @@ func (c *Alarm) Run(t *testing.T) {
 						c.state = STATE_ALARM
 						c.alarmStart = now
 						c.lastAIAlarm = now
+						c.startRec(t)
 					}
 					c.lastAICheck = now
 				}
@@ -79,9 +91,11 @@ func (c *Alarm) Run(t *testing.T) {
 				if !c.isHuman(t) {
 					t.Log("No human detected! -> back to IDLE.")
 					c.state = STATE_IDLE
+					c.stopRec(t)
 				} else if now.Sub(c.alarmStart) > ALARM_TIMEOUT {
 					t.Log("Human detected but alarm timeout! -> back to IDLE.")
 					c.state = STATE_IDLE
+					c.stopRec(t)
 				} else {
 					t.Log("Still on ALARM.")
 				}
@@ -90,6 +104,43 @@ func (c *Alarm) Run(t *testing.T) {
 			t.Logf("motion: %v, state: %v", motion, c.state)
 			time.Sleep(c.mdCheckInterval)
 		}
+	}
+}
+
+func (a *Alarm) startRec(t *testing.T) {
+	t.Log("starting....")
+	if a.ffmpeg != nil {
+		t.Log("Recorder already run")
+		return
+	}
+
+	output := fmt.Sprintf("'c:/temp/rec_%s_%d.mp4'", a.cfg.Name, time.Now().Unix())
+	output = strings.ReplaceAll(output, "\\", "/")
+
+	t.Log(output)
+
+	a.ffmpeg = exec.Command(
+		a.cfg.FFmpegPath,
+		"-rtsp_transport", "tcp",
+		"-i", a.cfg.RTSPURL,
+		"-c", "copy",
+		output,
+	)
+
+	if err := a.ffmpeg.Start(); err != nil {
+		t.Log(err.Error())
+	} else {
+		t.Log("ffmpeg record started.")
+	}
+
+}
+
+func (a *Alarm) stopRec(t *testing.T) {
+	t.Log("stopping....")
+	if a.ffmpeg != nil && a.ffmpeg.Process != nil {
+		a.ffmpeg.Process.Kill()
+		a.ffmpeg = nil
+		t.Log("Recording stopped")
 	}
 }
 

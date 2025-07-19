@@ -27,6 +27,7 @@ type ConfigCamera struct {
 	User       string `json:"user"`
 	Password   string `json:"pass"`
 	Tracking   bool   `json:"tracking"`
+	RecPath    string `json:"rec_path"`
 }
 
 var global *ConfigGlobal
