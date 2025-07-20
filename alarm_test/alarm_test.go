@@ -28,10 +28,13 @@ type Alarm struct {
 	lastAICheck     time.Time
 	lastAIAlarm     time.Time
 	alarmStart      time.Time
+	lastMotion      time.Time
 	aiCooldown      time.Duration
+	recCooldown     time.Duration
 	aiCheckInterval time.Duration
 	mdCheckInterval time.Duration
-	ffmpeg          *exec.Cmd
+
+	ffmpeg *exec.Cmd
 }
 
 func Test_DetectHuman(t *testing.T) {
@@ -49,9 +52,10 @@ func Test_DetectHuman(t *testing.T) {
 	var c = Alarm{
 		cfg:             &conf,
 		state:           STATE_IDLE,
-		aiCooldown:      20 * time.Second,
-		aiCheckInterval: 10 * time.Second,
-		mdCheckInterval: 5 * time.Second,
+		aiCooldown:      12 * time.Second,
+		aiCheckInterval: 4 * time.Second,
+		mdCheckInterval: 2 * time.Second,
+		recCooldown:     10 * time.Second,
 	}
 
 	c.Run(t)
@@ -83,21 +87,21 @@ func (c *Alarm) Run(t *testing.T) {
 						c.state = STATE_ALARM
 						c.alarmStart = now
 						c.lastAIAlarm = now
+						c.lastMotion = now
 						c.startRec(t)
 					}
 					c.lastAICheck = now
 				}
 			case STATE_ALARM:
-				if !c.isHuman(t) {
-					t.Log("No human detected! -> back to IDLE.")
-					c.state = STATE_IDLE
-					c.stopRec(t)
-				} else if now.Sub(c.alarmStart) > ALARM_TIMEOUT {
-					t.Log("Human detected but alarm timeout! -> back to IDLE.")
+				if c.isHuman(t) {
+					c.lastMotion = now
+					t.Log("Still on ALARM.")
+				} else if now.Sub(c.lastMotion) > c.recCooldown {
+					t.Log("No human detected for cooldown -> back to IDLE.")
 					c.state = STATE_IDLE
 					c.stopRec(t)
 				} else {
-					t.Log("Still on ALARM.")
+					t.Log("Cooldown running, still recording...")
 				}
 			}
 
@@ -114,7 +118,7 @@ func (a *Alarm) startRec(t *testing.T) {
 		return
 	}
 
-	output := fmt.Sprintf("'c:/temp/rec_%s_%d.mp4'", a.cfg.Name, time.Now().Unix())
+	output := fmt.Sprintf("%s/rec_%s_%d.mp4", a.cfg.RecPath, a.cfg.Name, time.Now().Unix())
 	output = strings.ReplaceAll(output, "\\", "/")
 
 	t.Log(output)
@@ -124,6 +128,7 @@ func (a *Alarm) startRec(t *testing.T) {
 		"-rtsp_transport", "tcp",
 		"-i", a.cfg.RTSPURL,
 		"-c", "copy",
+		"-f", "mpegts",
 		output,
 	)
 
