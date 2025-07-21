@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -35,6 +36,7 @@ type Alarm struct {
 	mdCheckInterval time.Duration
 
 	ffmpeg *exec.Cmd
+	mu     sync.Mutex
 }
 
 func Test_DetectHuman(t *testing.T) {
@@ -49,70 +51,75 @@ func Test_DetectHuman(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var c = Alarm{
+	var a = Alarm{
 		cfg:             &conf,
 		state:           STATE_IDLE,
-		aiCooldown:      12 * time.Second,
-		aiCheckInterval: 4 * time.Second,
-		mdCheckInterval: 2 * time.Second,
-		recCooldown:     10 * time.Second,
+		aiCooldown:      14 * time.Second,
+		aiCheckInterval: 7 * time.Second,
+		mdCheckInterval: 3 * time.Second,
+		recCooldown:     12 * time.Second,
 	}
 
-	c.Run(t)
+	a.Run(t)
 
 }
 
-func (c *Alarm) Run(t *testing.T) {
+func (a *Alarm) Run(t *testing.T) {
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	for {
 		select {
-		case <-time.After(5 * time.Minute):
-			c.stopRec(t)
+		case <-time.After(ALARM_TIMEOUT):
+			a.stopRec(t)
 			return
 		case <-sigs:
-			c.stopRec(t)
+			a.stopRec(t)
 			return
 		default:
-			motion := c.isMotion(t)
+			motion := a.isMotion(t)
 			now := time.Now()
 
-			switch c.state {
+			switch a.state {
 			case STATE_IDLE:
-				if motion && now.Sub(c.lastAICheck) > c.aiCheckInterval && now.Sub(c.lastAIAlarm) > c.aiCooldown {
-					if c.isHuman(t) {
-						t.Log("Human detected! -> change to ALARM.")
-						c.state = STATE_ALARM
-						c.alarmStart = now
-						c.lastAIAlarm = now
-						c.lastMotion = now
-						c.startRec(t)
+				if motion && now.Sub(a.lastAICheck) > a.aiCheckInterval && now.Sub(a.lastAIAlarm) > a.aiCooldown {
+					if a.isHuman(t) {
+						t.Log("Human detected! -> Change to ALARM.")
+						a.state = STATE_ALARM
+						a.alarmStart = now
+						a.lastAIAlarm = now
+						a.lastMotion = now
+						a.stopRec(t)
+						a.startRec(t)
 					}
-					c.lastAICheck = now
+					a.lastAICheck = now
 				}
 			case STATE_ALARM:
-				if c.isHuman(t) {
-					c.lastMotion = now
+				if a.isHuman(t) {
+					a.lastMotion = now
 					t.Log("Still on ALARM.")
-				} else if now.Sub(c.lastMotion) > c.recCooldown {
+				} else if now.Sub(a.lastMotion) > a.recCooldown {
 					t.Log("No human detected for cooldown -> back to IDLE.")
-					c.state = STATE_IDLE
-					c.stopRec(t)
+					a.state = STATE_IDLE
+					a.stopRec(t)
 				} else {
 					t.Log("Cooldown running, still recording...")
 				}
 			}
 
-			t.Logf("motion: %v, state: %v", motion, c.state)
-			time.Sleep(c.mdCheckInterval)
+			t.Logf("motion: %v, state: %v", motion, a.state)
+			time.Sleep(a.mdCheckInterval)
 		}
 	}
+
 }
 
 func (a *Alarm) startRec(t *testing.T) {
-	t.Log("starting....")
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	t.Log("Start recording...")
 	if a.ffmpeg != nil {
 		t.Log("Recorder already run")
 		return
@@ -141,17 +148,31 @@ func (a *Alarm) startRec(t *testing.T) {
 }
 
 func (a *Alarm) stopRec(t *testing.T) {
-	t.Log("stopping....")
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	t.Log("Stop recording....")
 	if a.ffmpeg != nil && a.ffmpeg.Process != nil {
 		a.ffmpeg.Process.Kill()
-		a.ffmpeg = nil
-		t.Log("Recording stopped")
+		done := make(chan error, 1)
+		go func() { done <- a.ffmpeg.Wait() }()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Logf("Recorder Wait error: %s", err.Error())
+			}
+			a.ffmpeg = nil
+			t.Log("Recording stopped.")
+		case <-time.After(5 * time.Second):
+			t.Log("Timeout waiting for recorder exit.")
+			a.ffmpeg = nil
+		}
 	}
 }
 
-func (c *Alarm) isMotion(t *testing.T) bool {
+func (a *Alarm) isMotion(t *testing.T) bool {
 
-	resp, err := http.DefaultClient.Get(fmt.Sprintf("http://%s/api.cgi?cmd=GetMdState&channel=0&rs=random123&user=%s&password=%s", c.cfg.Address, c.cfg.User, c.cfg.Password))
+	resp, err := http.DefaultClient.Get(fmt.Sprintf("http://%s/api.cgi?cmd=GetMdState&channel=0&user=%s&password=%s", a.cfg.Address, a.cfg.User, a.cfg.Password))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,9 +194,9 @@ func (c *Alarm) isMotion(t *testing.T) bool {
 
 }
 
-func (c *Alarm) isHuman(t *testing.T) bool {
+func (a *Alarm) isHuman(t *testing.T) bool {
 
-	resp, err := http.DefaultClient.Get(fmt.Sprintf("http://%s/api.cgi?cmd=GetAiState&channel=0&rs=random123&user=%s&password=%s", c.cfg.Address, c.cfg.User, c.cfg.Password))
+	resp, err := http.DefaultClient.Get(fmt.Sprintf("http://%s/api.cgi?cmd=GetAiState&channel=0&user=%s&password=%s", a.cfg.Address, a.cfg.User, a.cfg.Password))
 	if err != nil {
 		t.Fatal(err)
 	}

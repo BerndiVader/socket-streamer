@@ -8,13 +8,24 @@ import (
 	"strings"
 )
 
+type LogLevel int
+
+const (
+	LOG_DEBUG LogLevel = iota
+	LOG_INFO
+	LOG_WARN
+	LOG_ERROR
+	LOG_VERB
+)
+
 var SigShutdown = make(chan struct{})
 
 type ConfigGlobal struct {
-	LogLevel string          `json:"loglevel"`
-	WShost   string          `json:"ws_host"`
-	WSPort   int             `json:"ws_port"`
-	Cameras  []*ConfigCamera `json:"cameras"`
+	LogLevel    LogLevel
+	LoglevelStr string          `json:"loglevel"`
+	WShost      string          `json:"ws_host"`
+	WSPort      int             `json:"ws_port"`
+	Cameras     []*ConfigCamera `json:"cameras"`
 }
 
 type ConfigCamera struct {
@@ -35,8 +46,8 @@ var global *ConfigGlobal
 func Init(path *string) error {
 
 	global = &ConfigGlobal{
-		LogLevel: "info",
-		Cameras:  make([]*ConfigCamera, 0),
+		LoglevelStr: "info",
+		Cameras:     make([]*ConfigCamera, 0),
 	}
 
 	exe, err := os.Executable()
@@ -68,7 +79,21 @@ func Init(path *string) error {
 		log.Println("Config loaded ok.")
 	}
 
+	switch strings.ToLower(global.LoglevelStr) {
+	case "info":
+		global.LogLevel = LOG_INFO
+	case "warn":
+		global.LogLevel = LOG_WARN
+	case "error":
+		global.LogLevel = LOG_ERROR
+	case "verb":
+		global.LogLevel = LOG_VERB
+	default:
+		global.LogLevel = LOG_INFO
+	}
+
 	return err
+
 }
 
 func GetConfigGlobal() *ConfigGlobal {
