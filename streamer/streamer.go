@@ -142,7 +142,6 @@ func (s *Streamer) clientRunner(conn *websocket.Conn) {
 	addr := conn.RemoteAddr().String()
 	log.Infof("[%s]client-runner start. [%s]\n", s.cfg.Name, addr)
 	for {
-		conn.SetReadDeadline(time.Now().Add(1 * time.Second))
 		if _, _, err := conn.NextReader(); err != nil {
 			log.Errorf("[%s]client-runner stop by error - %v - [%s]\n", s.cfg.Name, err, addr)
 			return
