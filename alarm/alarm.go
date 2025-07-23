@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -54,7 +55,22 @@ func NewAlarm(conf *config.ConfigCamera) *Alarm {
 	return &a
 }
 
+func (a *Alarm) dailyMerger() {
+
+}
+
 func (a *Alarm) Run() {
+
+	go func() {
+		for {
+			select {
+			case <-config.SigShutdown:
+				return
+			case <-time.After(24 * time.Hour):
+				a.dailyMerger()
+			}
+		}
+	}()
 
 	for {
 		select {
@@ -69,7 +85,7 @@ func (a *Alarm) Run() {
 			case STATE_IDLE:
 				if motion && now.Sub(a.lastAICheck) > a.aiCheckInterval && now.Sub(a.lastAIAlarm) > a.aiCooldown {
 					if a.isHuman() {
-						log.Infof("Human detected! -> Change to ALARM.")
+						log.Infof("[REC] Human detected! -> Change to ALARM.")
 						a.state = STATE_ALARM
 						a.alarmStart = now
 						a.lastAIAlarm = now
@@ -82,16 +98,16 @@ func (a *Alarm) Run() {
 			case STATE_ALARM:
 				if a.isHuman() {
 					a.lastMotion = now
-					log.Debugln("Still on ALARM.")
+					log.Debugln("[REC] Still on ALARM.")
 				} else if now.Sub(a.lastMotion) > a.recCooldown {
-					log.Infoln("No human detected for cooldown -> back to IDLE.")
+					log.Infoln("[REC] No human detected for cooldown -> back to IDLE.")
 					a.state = STATE_IDLE
 					a.stopRec()
 				} else {
-					log.Debugln("Cooldown running, still recording...")
+					log.Debugln("[REC] Cooldown running, still recording...")
 				}
 			}
-			log.Debugf("motion: %v, state: %v\n", motion, a.state)
+			log.Debugf("[REC] motion: %v, state: %v\n", motion, a.state)
 		}
 	}
 
@@ -101,14 +117,15 @@ func (a *Alarm) startRec() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	log.Debugln("Start recording...")
+	now := time.Now()
+	output := fmt.Sprintf("%s/rec_%s_%d.mp4", a.cfg.RecPath, a.cfg.Name, now.Unix())
+	output = strings.ReplaceAll(output, "\\", "/")
+
+	log.Infof("[REC] Start recording: %s at %s", output, now.Format(time.RFC3339))
 	if a.ffmpeg != nil {
-		log.Debugln("Recorder already run")
+		log.Debugln("[REC] Recorder already run")
 		return
 	}
-
-	output := fmt.Sprintf("%s/rec_%s_%d.mp4", a.cfg.RecPath, a.cfg.Name, time.Now().Unix())
-	output = strings.ReplaceAll(output, "\\", "/")
 
 	a.ffmpeg = exec.Command(
 		a.cfg.FFmpegPath,
@@ -119,10 +136,19 @@ func (a *Alarm) startRec() {
 		output,
 	)
 
-	if err := a.ffmpeg.Start(); err != nil {
-		log.Errorln(err.Error())
+	logfile := fmt.Sprintf("%s/ffmpeg_logs/ffmpeg_%s_%d.log", a.cfg.RecPath, a.cfg.Name, now.Unix())
+	f, err := os.Create(logfile)
+	if err == nil {
+		a.ffmpeg.Stderr = f
+		defer f.Close()
 	} else {
-		log.Debugln("ffmpeg record started.")
+		log.Errorf("[REC] Could not create ffmpeg log file: %s", err)
+	}
+
+	if err := a.ffmpeg.Start(); err != nil {
+		log.Errorf("[REC] ffmpeg start error: %s", err.Error())
+	} else {
+		log.Debugln("[REC] ffmpeg record started.")
 	}
 
 }
@@ -131,7 +157,8 @@ func (a *Alarm) stopRec() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	log.Debugln("Stop recording....")
+	now := time.Now()
+	log.Infof("[REC] Stop recording at %s", now.Format(time.RFC3339))
 	if a.ffmpeg != nil && a.ffmpeg.Process != nil {
 		a.ffmpeg.Process.Kill()
 		done := make(chan error, 1)
@@ -139,12 +166,12 @@ func (a *Alarm) stopRec() {
 		select {
 		case err := <-done:
 			if err != nil {
-				log.Errorf("Recorder Wait error: %s\n", err.Error())
+				log.Errorf("[REC] Recorder Wait error: %s\n", err.Error())
 			}
 			a.ffmpeg = nil
-			log.Debugln("Recording stopped.")
+			log.Debugln("[REC] Recording stopped.")
 		case <-time.After(5 * time.Second):
-			log.Debugln("Timeout waiting for recorder exit.")
+			log.Debugln("[REC] Timeout waiting for recorder exit.")
 			a.ffmpeg = nil
 		}
 	}
