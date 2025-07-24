@@ -23,6 +23,7 @@ const (
 
 const (
 	ALARM_TIMEOUT = 5 * time.Minute
+	FFMPEG_LOGS   = "ffmpeg_logs"
 )
 
 type Alarm struct {
@@ -60,6 +61,14 @@ func (a *Alarm) dailyMerger() {
 }
 
 func (a *Alarm) Run() {
+
+	if _, err := os.Stat(a.cfg.RecPath); err != nil {
+		if err := os.MkdirAll(a.cfg.RecPath, 0755); err != nil {
+			log.Errorln("[REC] Failed to create recording dir.")
+		} else {
+			log.Debugf("[REC] Created recording dir %s.", a.cfg.RecPath)
+		}
+	}
 
 	go func() {
 		for {
@@ -107,7 +116,7 @@ func (a *Alarm) Run() {
 					log.Debugln("[REC] Cooldown running, still recording...")
 				}
 			}
-			log.Debugf("[REC] motion: %v, state: %v\n", motion, a.state)
+			log.Debugf("[REC] motion: %v, state: %v", motion, a.state)
 		}
 	}
 
@@ -121,7 +130,7 @@ func (a *Alarm) startRec() {
 	output := fmt.Sprintf("%s/rec_%s_%d.mp4", a.cfg.RecPath, a.cfg.Name, now.Unix())
 	output = strings.ReplaceAll(output, "\\", "/")
 
-	log.Infof("[REC] Start recording: %s at %s", output, now.Format(time.RFC3339))
+	log.Debugf("[REC] Start recording: %s at %s", output, now.Format(time.RFC3339))
 	if a.ffmpeg != nil {
 		log.Debugln("[REC] Recorder already run")
 		return
@@ -136,7 +145,7 @@ func (a *Alarm) startRec() {
 		output,
 	)
 
-	logfile := fmt.Sprintf("%s/ffmpeg_logs/ffmpeg_%s_%d.log", a.cfg.RecPath, a.cfg.Name, now.Unix())
+	logfile := fmt.Sprintf("%s/%s/ffmpeg_%s_%d.log", a.cfg.RecPath, FFMPEG_LOGS, a.cfg.Name, now.Unix())
 	f, err := os.Create(logfile)
 	if err == nil {
 		a.ffmpeg.Stderr = f
@@ -158,7 +167,7 @@ func (a *Alarm) stopRec() {
 	defer a.mu.Unlock()
 
 	now := time.Now()
-	log.Infof("[REC] Stop recording at %s", now.Format(time.RFC3339))
+	log.Debugf("[REC] Stop recording at %s", now.Format(time.RFC3339))
 	if a.ffmpeg != nil && a.ffmpeg.Process != nil {
 		a.ffmpeg.Process.Kill()
 		done := make(chan error, 1)
@@ -166,7 +175,7 @@ func (a *Alarm) stopRec() {
 		select {
 		case err := <-done:
 			if err != nil {
-				log.Errorf("[REC] Recorder Wait error: %s\n", err.Error())
+				log.Errorf("[REC] Recorder Wait error: %s", err.Error())
 			}
 			a.ffmpeg = nil
 			log.Debugln("[REC] Recording stopped.")
