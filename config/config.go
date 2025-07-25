@@ -20,27 +20,6 @@ const (
 
 var SigShutdown = make(chan struct{})
 
-type ConfigGlobal struct {
-	LogLevel    LogLevel
-	LoglevelStr string          `json:"loglevel"`
-	WShost      string          `json:"ws_host"`
-	WSPort      int             `json:"ws_port"`
-	Cameras     []*ConfigCamera `json:"cameras"`
-}
-
-type ConfigCamera struct {
-	Name       string `json:"name"`
-	RTSPURL    string `json:"rtsp_url"`
-	WSPath     string `json:"ws_path"`
-	Origin     string `json:"origin"`
-	FFmpegPath string `json:"ffmpeg_path"`
-	Address    string `json:"addr"`
-	User       string `json:"user"`
-	Password   string `json:"pass"`
-	Tracking   bool   `json:"tracking"`
-	RecPath    string `json:"rec_path"`
-}
-
 var global *ConfigGlobal
 
 func Init(path *string) error {

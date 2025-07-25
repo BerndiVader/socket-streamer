@@ -45,13 +45,26 @@ type Alarm struct {
 
 func NewAlarm(conf *config.ConfigCamera) *Alarm {
 
-	var a = Alarm{
+	a := Alarm{
 		cfg:             conf,
 		state:           STATE_IDLE,
-		aiCooldown:      14 * time.Second,
-		aiCheckInterval: 7 * time.Second,
-		mdCheckInterval: 3 * time.Second,
-		recCooldown:     12 * time.Second,
+		aiCooldown:      time.Second * 14,
+		aiCheckInterval: time.Second * 7,
+		mdCheckInterval: time.Second * 3,
+		recCooldown:     time.Second * 12,
+	}
+
+	if conf.AiCooldown > 0 {
+		a.aiCooldown = time.Duration(conf.AiCooldown) * time.Second
+	}
+	if conf.AiInterval > 0 {
+		a.aiCheckInterval = time.Duration(conf.AiInterval) * time.Second
+	}
+	if conf.MdInterval > 0 {
+		a.mdCheckInterval = time.Duration(conf.MdInterval) * time.Second
+	}
+	if conf.ReCooldown > 0 {
+		a.recCooldown = time.Duration(conf.ReCooldown) * time.Second
 	}
 
 	return &a
