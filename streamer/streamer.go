@@ -100,16 +100,7 @@ func (s *Streamer) Close() {
 	s.clients = nil
 	s.mutex.Unlock()
 
-	if s.ffmpegCmd != nil {
-		log.Infof("[%s]Terminate ffmpeg-process.\n", s.cfg.Name)
-		s.mutex.Lock()
-		err := s.ffmpegCmd.Process.Kill()
-		s.mutex.Unlock()
-		if err != nil {
-			log.Errorf("[%s]Failed to terminate ffmpeg-process: %v\n", s.cfg.Name, err)
-		}
-
-	}
+	s.destroyFFmpeg()
 	close(s.done)
 }
 
@@ -320,13 +311,15 @@ func (s *Streamer) pipeRunner(streampipe io.ReadCloser, errpipe io.ReadCloser) {
 
 func (s *Streamer) destroyFFmpeg() {
 	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	if s.ffmpegCmd != nil {
 		log.Infof("[%s]Destroy ffmpeg process...\n", s.cfg.Name)
-		s.ffmpegCmd.Process.Kill()
+		if err := s.ffmpegCmd.Process.Kill(); err != nil {
+			log.Errorf("[%s]Failed to terminate ffmpeg-process: %v\n", s.cfg.Name, err)
+		}
 		s.ffmpegCmd = nil
 		s.restartCount = 0
 	}
-	s.mutex.Unlock()
 }
 
 func (s *Streamer) shutdownHandler() {

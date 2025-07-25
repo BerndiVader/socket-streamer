@@ -1,4 +1,4 @@
-package alarm_test
+package alarm
 
 import (
 	"fmt"
@@ -8,16 +8,23 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"testing"
 	"time"
+	"ws-streamer/config"
+	"ws-streamer/log"
 )
 
-var RecPath string = "//keller/c/temp1"
+const DATE_FORMAT string = "2006-01-02"
 
-func Test_merge(t *testing.T) {
-	if entries, err := os.ReadDir(RecPath); err == nil {
+func (a *Alarm) dailyMerger() {
+	if entries, err := os.ReadDir(a.cfg.RecPath); err == nil {
 
 		entries = filter(entries, func(e os.DirEntry) bool {
+			info, err := e.Info()
+			if err == nil {
+				if info.ModTime().Format(DATE_FORMAT) == time.Now().Format(DATE_FORMAT) {
+					return false
+				}
+			}
 			return !e.IsDir() && strings.HasSuffix(e.Name(), ".mp4")
 		})
 
@@ -32,26 +39,27 @@ func Test_merge(t *testing.T) {
 		})
 
 		for len(entries) > 0 {
-			entries = merge(entries)
+			entries = merge(entries, a.cfg)
 		}
 
 	}
+
 }
 
 func filter(entries []os.DirEntry, keep func(os.DirEntry) bool) []os.DirEntry {
-	var keeps []os.DirEntry
+	var filtred []os.DirEntry
 
 	for _, de := range entries {
 		if keep(de) {
-			keeps = append(keeps, de)
+			filtred = append(filtred, de)
 		}
 
 	}
 
-	return keeps
+	return filtred
 }
 
-func merge(entries []os.DirEntry) []os.DirEntry {
+func merge(entries []os.DirEntry, cfg *config.ConfigCamera) []os.DirEntry {
 	var curr time.Time
 	var merges []string
 	var filtred []os.DirEntry
@@ -61,7 +69,7 @@ func merge(entries []os.DirEntry) []os.DirEntry {
 			if curr.IsZero() {
 				curr = info.ModTime()
 			}
-			switch curr.Format("2006-01-02") == info.ModTime().Format("2006-01-02") {
+			switch curr.Format(DATE_FORMAT) == info.ModTime().Format(DATE_FORMAT) {
 			case true:
 				if info.Size() > 0 {
 					merges = append(merges, merger.Name())
@@ -72,23 +80,32 @@ func merge(entries []os.DirEntry) []os.DirEntry {
 		}
 	}
 
-	outPath := filepath.Join(RecPath, "archive", "test_"+curr.Format("2006-01-02")+".mp4")
+	arcPath := filepath.Join(cfg.RecPath, "archive")
+	if _, err := os.Stat(arcPath); err != nil {
+		if err := os.MkdirAll(arcPath, 0775); err != nil {
+			log.Errorln("[REC] Error making archive dir.")
+		} else {
+			log.Debugln("[REC] Created archive dir ok.")
+		}
+	}
+
+	outPath := filepath.Join(arcPath, fmt.Sprintf("%s_%s.mp4", cfg.Name, curr.Format(DATE_FORMAT)))
 
 	switch len(merges) {
 	case 0:
 	case 1:
-		src := filepath.Join(RecPath, merges[0])
+		src := filepath.Join(cfg.RecPath, merges[0])
 		if err := cp(src, outPath); err != nil {
-			fmt.Println("Copy error:", err)
+			log.Errorf("Copy error: %s", err)
 		}
 	default:
-		lpath := filepath.Join(RecPath, "merges.txt")
+		lpath := filepath.Join(cfg.RecPath, "merges.txt")
 		if lfile, err := os.Create(lpath); err == nil {
 			for _, fname := range merges {
-				fmt.Fprintf(lfile, "file '%s'\n", filepath.Join(RecPath, fname))
+				fmt.Fprintf(lfile, "file '%s'\n", filepath.Join(cfg.RecPath, fname))
 			}
 			lfile.Close()
-			cmd := exec.Command("ffmpeg.exe", "-f", "concat", "-safe", "0", "-i", lpath, "-c", "copy", outPath)
+			cmd := exec.Command(cfg.FFmpegPath, "-f", "concat", "-safe", "0", "-i", lpath, "-c", "copy", outPath)
 			if err := cmd.Run(); err != nil {
 				fmt.Println(err)
 			}
@@ -101,16 +118,16 @@ func merge(entries []os.DirEntry) []os.DirEntry {
 }
 
 func cp(src, dst string) error {
-	in, err := os.Open(src)
+	from, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	defer in.Close()
-	out, err := os.Create(dst)
+	defer from.Close()
+	to, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-	_, err = io.Copy(out, in)
+	defer to.Close()
+	_, err = io.Copy(to, from)
 	return err
 }

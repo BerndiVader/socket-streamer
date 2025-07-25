@@ -39,6 +39,7 @@ type Alarm struct {
 	mdCheckInterval time.Duration
 
 	ffmpeg *exec.Cmd
+	stdin  io.WriteCloser
 	mu     sync.Mutex
 }
 
@@ -56,10 +57,6 @@ func NewAlarm(conf *config.ConfigCamera) *Alarm {
 	return &a
 }
 
-func (a *Alarm) dailyMerger() {
-
-}
-
 func (a *Alarm) Run() {
 
 	if _, err := os.Stat(a.cfg.RecPath); err != nil {
@@ -72,10 +69,12 @@ func (a *Alarm) Run() {
 
 	go func() {
 		for {
+			next := time.Now().Add(24 * time.Hour)
+			wait := time.Until(time.Date(next.Year(), next.Month(), next.Day(), 0, 30, 0, 0, next.Location()))
 			select {
 			case <-config.SigShutdown:
 				return
-			case <-time.After(24 * time.Hour):
+			case <-time.After(wait):
 				a.dailyMerger()
 			}
 		}
@@ -145,7 +144,14 @@ func (a *Alarm) startRec() {
 		output,
 	)
 
-	logfile := fmt.Sprintf("%s/%s/ffmpeg_%s_%d.log", a.cfg.RecPath, FFMPEG_LOGS, a.cfg.Name, now.Unix())
+	path := fmt.Sprintf("%s/%s", a.cfg.RecPath, FFMPEG_LOGS)
+	if _, err := os.Stat(path); err != nil {
+		if err := os.MkdirAll(path, 0755); err != nil {
+			log.Errorln(err)
+		}
+	}
+
+	logfile := fmt.Sprintf("%s/ffmpeg_%s_%d.log", path, a.cfg.Name, now.Unix())
 	f, err := os.Create(logfile)
 	if err == nil {
 		a.ffmpeg.Stderr = f
@@ -153,6 +159,8 @@ func (a *Alarm) startRec() {
 	} else {
 		log.Errorf("[REC] Could not create ffmpeg log file: %s", err)
 	}
+
+	a.stdin, _ = a.ffmpeg.StdinPipe()
 
 	if err := a.ffmpeg.Start(); err != nil {
 		log.Errorf("[REC] ffmpeg start error: %s", err.Error())
@@ -169,18 +177,29 @@ func (a *Alarm) stopRec() {
 	now := time.Now()
 	log.Debugf("[REC] Stop recording at %s", now.Format(time.RFC3339))
 	if a.ffmpeg != nil && a.ffmpeg.Process != nil {
-		a.ffmpeg.Process.Kill()
+		if a.stdin != nil {
+			defer a.stdin.Close()
+			if _, err := a.stdin.Write([]byte("q\n")); err != nil {
+				a.ffmpeg.Process.Kill()
+				log.Errorln(err)
+			}
+		} else {
+			a.ffmpeg.Process.Kill()
+			log.Errorln("[REC] stdin was not set.")
+		}
 		done := make(chan error, 1)
 		go func() { done <- a.ffmpeg.Wait() }()
 		select {
 		case err := <-done:
 			if err != nil {
 				log.Errorf("[REC] Recorder Wait error: %s", err.Error())
+				a.ffmpeg.Process.Kill()
 			}
 			a.ffmpeg = nil
 			log.Debugln("[REC] Recording stopped.")
 		case <-time.After(5 * time.Second):
 			log.Debugln("[REC] Timeout waiting for recorder exit.")
+			a.ffmpeg.Process.Kill()
 			a.ffmpeg = nil
 		}
 	}
