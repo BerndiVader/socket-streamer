@@ -1,8 +1,8 @@
 package log
 
 import (
+	"bv-streamer/config"
 	"log"
-	"ws-streamer/config"
 )
 
 func Debugln(s string) {

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bv-streamer/config"
+	"bv-streamer/streamer"
 	"flag"
 	"fmt"
 	"log"
@@ -9,15 +11,13 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-	"ws-streamer/config"
-	"ws-streamer/streamer"
 )
 
 var sigs = make(chan os.Signal, 1)
 var done = make(chan struct{})
 
 func main() {
-	log.SetPrefix("[ws-streamer]")
+	log.SetPrefix("[bv-streamer]")
 	log.SetFlags(log.LstdFlags)
 	ShutdownHandler()
 
@@ -61,7 +61,7 @@ func ShutdownHandler() {
 
 	go func() {
 		<-sigs
-		log.Println("Shutting down ws-streamer-go...")
+		log.Println("Shutting down bv-streamer...")
 		log.Println("Close all streamer...")
 		close(config.SigShutdown)
 		time.Sleep(3 * time.Second)

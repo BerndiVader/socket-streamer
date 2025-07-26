@@ -1,15 +1,15 @@
 package streamer
 
 import (
+	"bv-streamer/alarm"
+	"bv-streamer/config"
+	"bv-streamer/log"
 	"io"
 	"net/http"
 	"os/exec"
 	"strings"
 	"sync"
 	"time"
-	"ws-streamer/alarm"
-	"ws-streamer/config"
-	"ws-streamer/log"
 
 	"github.com/gorilla/websocket"
 )

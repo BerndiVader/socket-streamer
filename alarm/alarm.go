@@ -1,6 +1,8 @@
 package alarm
 
 import (
+	"bv-streamer/config"
+	"bv-streamer/log"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,8 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"ws-streamer/config"
-	"ws-streamer/log"
 )
 
 type State int

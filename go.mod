@@ -1,4 +1,4 @@
-module ws-streamer
+module bv-streamer
 
 go 1.24.4
 

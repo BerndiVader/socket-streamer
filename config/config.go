@@ -33,7 +33,7 @@ func Init(path *string) error {
 	if err == nil || *path != "" {
 		var conf string
 		if *path == "" {
-			conf = filepath.Join(filepath.Dir(exe), "ws-streamer.conf")
+			conf = filepath.Join(filepath.Dir(exe), "bv-streamer.conf")
 			conf = strings.ReplaceAll(conf, "\\", "/")
 		} else {
 			conf = *path
@@ -59,6 +59,8 @@ func Init(path *string) error {
 	}
 
 	switch strings.ToLower(global.LoglevelStr) {
+	case "debug":
+		global.LogLevel = LOG_DEBUG
 	case "info":
 		global.LogLevel = LOG_INFO
 	case "warn":

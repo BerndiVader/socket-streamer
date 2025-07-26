@@ -9,10 +9,10 @@
 3. Clone the project:
    ```
    git clone
-   cd ws-streamer
+   cd bv-streamer
    go build -o bv-streamer
    ```
-4. Adjust configuration (`ws-streamer.conf`)
+4. Adjust configuration (`bv-streamer.conf`)
 
 ## Usage
 - Start:
@@ -25,7 +25,7 @@
 - Records are saved in the configured dir
 
 ## Configuration
-The file `ws-streamer.conf` contains all relevant settings:
+The file `bv-streamer.conf` contains all relevant settings:
 - Camera IP, RTSP URL, user/password
 - Recording directory
 - ffmpeg path
