@@ -82,16 +82,16 @@ func merge(entries []os.DirEntry, cfg *config.ConfigCamera) []os.DirEntry {
 				filtred = append(filtred, merger)
 			}
 		} else {
-			log.Errorf("[MERGER] %v", err)
+			log.Errorf("[%s] %v", cfg.Name, err)
 		}
 	}
 
 	arcPath := filepath.Join(cfg.RecPath, "archive")
 	if _, err := os.Stat(arcPath); err != nil {
 		if err := os.MkdirAll(arcPath, 0775); err != nil {
-			log.Errorf("[MERGER] Error making archive dir. %v", err)
+			log.Errorf("[%s] Error making archive dir. %v", cfg.Name, err)
 		} else {
-			log.Debugf("[MERGER] Created archive dir ok.")
+			log.Debugf("[%s] Created archive dir ok.", cfg.Name)
 		}
 	}
 
@@ -102,10 +102,11 @@ func merge(entries []os.DirEntry, cfg *config.ConfigCamera) []os.DirEntry {
 	case 1:
 		src := filepath.Join(cfg.RecPath, merges[0])
 		if err := cp(src, outPath); err != nil {
-			log.Errorf("[MERGER] Copy error: %v", err)
+			log.Errorf("[%s] Copy error: %v", cfg.Name, err)
 		}
 	default:
 		lpath := filepath.Join(cfg.RecPath, "merges.txt")
+		defer os.Remove(lpath)
 		if lfile, err := os.Create(lpath); err == nil {
 			for _, fname := range merges {
 				fmt.Fprintf(lfile, "file '%s'\n", filepath.Join(cfg.RecPath, fname))
@@ -113,11 +114,17 @@ func merge(entries []os.DirEntry, cfg *config.ConfigCamera) []os.DirEntry {
 			lfile.Close()
 			cmd := exec.Command(cfg.FFmpegPath, "-f", "concat", "-safe", "0", "-i", lpath, "-c", "copy", outPath)
 			if err := cmd.Run(); err != nil {
-				log.Errorf("[MERGER] Failed to create archive. %v", err)
+				log.Errorf("[%s] Failed to create archive. %v", cfg.Name, err)
+			} else {
+				log.Infof("[%s] Archive created for day: %s", cfg.Name, curr.Format(DATE_FORMAT))
+				for _, fname := range merges {
+					if err := os.Remove(filepath.Join(cfg.RecPath, fname)); err != nil {
+						log.Errorf("[%s] Failed to remove file %s - %v", cfg.Name, fname, err)
+					}
+				}
 			}
-			cmd.Process.Kill()
-			os.Remove(lpath)
 		}
+
 	}
 
 	return filtred
