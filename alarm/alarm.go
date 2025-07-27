@@ -74,9 +74,9 @@ func (a *Alarm) Run() {
 
 	if _, err := os.Stat(a.cfg.RecPath); err != nil {
 		if err := os.MkdirAll(a.cfg.RecPath, 0755); err != nil {
-			log.Errorln("[REC] Failed to create recording dir.")
+			log.Errorf("[%s] Failed to create recording dir.", a.cfg.Name)
 		} else {
-			log.Debugf("[REC] Created recording dir %s.", a.cfg.RecPath)
+			log.Debugf("[%s] Created recording dir %s.", a.cfg.Name, a.cfg.RecPath)
 		}
 	}
 
@@ -106,7 +106,7 @@ func (a *Alarm) Run() {
 			case STATE_IDLE:
 				if motion && now.Sub(a.lastAICheck) > a.aiCheckInterval && now.Sub(a.lastAIAlarm) > a.aiCooldown {
 					if a.isHuman() {
-						log.Infof("[REC] Human detected! -> Change to ALARM.")
+						log.Infof("[%s] Human detected! -> Change to ALARM.", a.cfg.Name)
 						a.state = STATE_ALARM
 						a.alarmStart = now
 						a.lastAIAlarm = now
@@ -119,16 +119,16 @@ func (a *Alarm) Run() {
 			case STATE_ALARM:
 				if a.isHuman() {
 					a.lastMotion = now
-					log.Debugln("[REC] Still on ALARM.")
+					log.Debugf("[%s] Still on ALARM.", a.cfg.Name)
 				} else if now.Sub(a.lastMotion) > a.recCooldown {
-					log.Infoln("[REC] No human detected for cooldown -> back to IDLE.")
+					log.Infof("[%s] No human detected for cooldown -> back to IDLE.", a.cfg.Name)
 					a.state = STATE_IDLE
 					a.stopRec()
 				} else {
-					log.Debugln("[REC] Cooldown running, still recording...")
+					log.Debugf("[%s] Cooldown running, still recording...", a.cfg.Name)
 				}
 			}
-			log.Debugf("[REC] motion: %v, state: %v", motion, a.state)
+			log.Debugf("[%s] motion: %v, state: %v", a.cfg.Name, motion, a.state)
 		}
 	}
 
@@ -142,9 +142,9 @@ func (a *Alarm) startRec() {
 	output := fmt.Sprintf("%s/rec_%s_%d.mp4", a.cfg.RecPath, a.cfg.Name, now.Unix())
 	output = strings.ReplaceAll(output, "\\", "/")
 
-	log.Debugf("[REC] Start recording: %s at %s", output, now.Format(time.RFC3339))
+	log.Debugf("[%s] Start recording: %s at %s", a.cfg.Name, output, now.Format(time.RFC3339))
 	if a.ffmpeg != nil {
-		log.Debugln("[REC] Recorder already run")
+		log.Debugf("[%s] Recorder already run", a.cfg.Name)
 		return
 	}
 
@@ -160,7 +160,7 @@ func (a *Alarm) startRec() {
 	path := fmt.Sprintf("%s/%s", a.cfg.RecPath, FFMPEG_LOGS)
 	if _, err := os.Stat(path); err != nil {
 		if err := os.MkdirAll(path, 0755); err != nil {
-			log.Errorln(err)
+			log.Errorf("[%s] %v", a.cfg.Name, err)
 		}
 	}
 
@@ -170,15 +170,15 @@ func (a *Alarm) startRec() {
 		a.ffmpeg.Stderr = f
 		defer f.Close()
 	} else {
-		log.Errorf("[REC] Could not create ffmpeg log file: %s", err)
+		log.Errorf("[%s] Could not create ffmpeg log file: %v", a.cfg.Name, err)
 	}
 
 	a.stdin, _ = a.ffmpeg.StdinPipe()
 
 	if err := a.ffmpeg.Start(); err != nil {
-		log.Errorf("[REC] ffmpeg start error: %s", err.Error())
+		log.Errorf("[%s] ffmpeg start error: %v", a.cfg.Name, err)
 	} else {
-		log.Debugln("[REC] ffmpeg record started.")
+		log.Debugf("[%s] ffmpeg record started.", a.cfg.Name)
 	}
 
 }
@@ -188,30 +188,30 @@ func (a *Alarm) stopRec() {
 	defer a.mu.Unlock()
 
 	now := time.Now()
-	log.Debugf("[REC] Stop recording at %s", now.Format(time.RFC3339))
+	log.Debugf("[%s] Stop recording at %s", a.cfg.Name, now.Format(time.RFC3339))
 	if a.ffmpeg != nil && a.ffmpeg.Process != nil {
 		if a.stdin != nil {
 			defer a.stdin.Close()
 			if _, err := a.stdin.Write([]byte("q\n")); err != nil {
 				a.ffmpeg.Process.Kill()
-				log.Errorln(err)
+				log.Errorf("[%s] %v", a.cfg.Name, err)
 			}
 		} else {
 			a.ffmpeg.Process.Kill()
-			log.Errorln("[REC] stdin was not set.")
+			log.Errorf("[%s] stdin was not set.", a.cfg.Name)
 		}
 		done := make(chan error, 1)
 		go func() { done <- a.ffmpeg.Wait() }()
 		select {
 		case err := <-done:
 			if err != nil {
-				log.Errorf("[REC] Recorder Wait error: %s", err.Error())
+				log.Errorf("[%s] Recorder Wait error: %v", a.cfg.Name, err)
 				a.ffmpeg.Process.Kill()
 			}
 			a.ffmpeg = nil
-			log.Debugln("[REC] Recording stopped.")
+			log.Debugf("[%s] Recording stopped.", a.cfg.Name)
 		case <-time.After(5 * time.Second):
-			log.Debugln("[REC] Timeout waiting for recorder exit.")
+			log.Debugf("[%s] Timeout waiting for recorder exit.", a.cfg.Name)
 			a.ffmpeg.Process.Kill()
 			a.ffmpeg = nil
 		}
@@ -222,19 +222,19 @@ func (a *Alarm) isMotion() bool {
 
 	resp, err := http.DefaultClient.Get(fmt.Sprintf("http://%s/api.cgi?cmd=GetMdState&channel=0&user=%s&password=%s", a.cfg.Address, a.cfg.User, a.cfg.Password))
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("[%s] %v", a.cfg.Name, err)
 		return false
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("[%s] %v", a.cfg.Name, err)
 		return false
 	}
 	var states MdStateEnvelope
 	if err := json.Unmarshal(body, &states); err != nil {
-		log.Errorln(err)
+		log.Errorf("[%s] %v", a.cfg.Name, err)
 		return false
 	}
 	if len(states) > 0 {
@@ -249,19 +249,19 @@ func (a *Alarm) isHuman() bool {
 
 	resp, err := http.DefaultClient.Get(fmt.Sprintf("http://%s/api.cgi?cmd=GetAiState&channel=0&user=%s&password=%s", a.cfg.Address, a.cfg.User, a.cfg.Password))
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("[%s] %v", a.cfg.Name, err)
 		return false
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorf("[%s] %v", a.cfg.Name, err)
 		return false
 	}
 	var states AiStateEnvelope
 	if err := json.Unmarshal(body, &states); err != nil {
-		log.Errorln(err)
+		log.Errorf("[%s] %v", a.cfg.Name, err)
 		return false
 	}
 	if len(states) > 0 {

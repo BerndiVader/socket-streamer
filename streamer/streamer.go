@@ -81,7 +81,7 @@ func NewStreamer(c *config.ConfigCamera) *Streamer {
 }
 
 func (s *Streamer) Start() {
-	log.Infof("[%s]Starting streamer...\n", s.cfg.Name)
+	log.Infof("[%s] Starting streamer...\n", s.cfg.Name)
 
 	s.clients = make(map[*websocket.Conn]bool)
 	go s.ffmpegRunner()
@@ -89,7 +89,7 @@ func (s *Streamer) Start() {
 }
 
 func (s *Streamer) Close() {
-	log.Infof("[%s]Closing streamer...\n", s.cfg.Name)
+	log.Infof("[%s] Closing streamer...\n", s.cfg.Name)
 	s.unregisterHandler()
 
 	s.mutex.Lock()
@@ -108,7 +108,7 @@ func (s *Streamer) handler(w http.ResponseWriter, r *http.Request) {
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		http.Error(w, "WebSocket upgrade failed", http.StatusBadRequest)
-		log.Errorf("[%s]Upgrade error: %v", s.cfg.Name, err)
+		log.Errorf("[%s] Upgrade error: %v", s.cfg.Name, err)
 		if conn != nil {
 			conn.Close()
 		}
@@ -131,15 +131,15 @@ func (s *Streamer) clientRunner(conn *websocket.Conn) {
 	}()
 
 	addr := conn.RemoteAddr().String()
-	log.Infof("[%s]client-runner start. [%s]\n", s.cfg.Name, addr)
+	log.Infof("[%s] Client-runner start. [%s]", s.cfg.Name, addr)
 	for {
 		if _, _, err := conn.NextReader(); err != nil {
-			log.Errorf("[%s]client-runner stop by error - %v - [%s]\n", s.cfg.Name, err, addr)
+			log.Errorf("[%s] Client-runner stop by error - %v - [%s]", s.cfg.Name, err, addr)
 			return
 		}
 		select {
 		case <-s.done:
-			log.Infof("[%s]client-runner stop. [%s]\n", s.cfg.Name, addr)
+			log.Infof("[%s] Client-runner stop. [%s]", s.cfg.Name, addr)
 			return
 		default:
 			continue
@@ -149,7 +149,7 @@ func (s *Streamer) clientRunner(conn *websocket.Conn) {
 
 func (s *Streamer) ffmpegRunner() {
 
-	log.Infof("[%s]ffmpeg-runner start.\n", s.cfg.Name)
+	log.Infof("[%s] FFmpeg-runner start.", s.cfg.Name)
 	ffmpegDone := make(chan error, 1)
 	var ffmpegRunning bool
 
@@ -161,20 +161,20 @@ func (s *Streamer) ffmpegRunner() {
 
 		select {
 		case <-s.done:
-			log.Infof("[%s]ffmpeg-runner stop (shutdown signal).\n", s.cfg.Name)
+			log.Infof("[%s] FFmpeg-runner stop (shutdown signal).", s.cfg.Name)
 			s.destroyFFmpeg()
 			if ffmpegRunning {
 				<-ffmpegDone
 			}
 			return
 		case err := <-ffmpegDone:
-			log.Errorf("[%s]ffmpeg exited: %v\n", s.cfg.Name, err)
+			log.Errorf("[%s] FFmpeg exited: %v", s.cfg.Name, err)
 			ffmpegRunning = false
 			s.mutex.Lock()
 			s.ffmpegCmd = nil
 			s.mutex.Unlock()
 			if hasClients {
-				log.Infof("[%s]Restarting ffmpeg in %v...\n", s.cfg.Name, restartDelay)
+				log.Infof("[%s] Restarting ffmpeg in %v...", s.cfg.Name, restartDelay)
 				time.Sleep(restartDelay)
 			}
 		case <-time.After(1 * time.Second):
@@ -182,7 +182,7 @@ func (s *Streamer) ffmpegRunner() {
 			case !ffmpegRunning && hasClients:
 				stdout, stderr, err := s.createFFmpeg()
 				if err != nil {
-					log.Errorf("[%s]Failed to start ffmpeg: %v\n", s.cfg.Name, err)
+					log.Errorf("[%s] Failed to start ffmpeg: %v", s.cfg.Name, err)
 					time.Sleep(restartDelay)
 					continue
 				}
@@ -194,9 +194,9 @@ func (s *Streamer) ffmpegRunner() {
 				go func() {
 					ffmpegDone <- cmd.Wait()
 				}()
-				log.Debugf("[%s]ffmpeg started.\n", s.cfg.Name)
+				log.Debugf("[%s] FFmpeg started.", s.cfg.Name)
 			case ffmpegRunning && !hasClients:
-				log.Infof("[%s]No clients left, stopping ffmpeg...\n", s.cfg.Name)
+				log.Infof("[%s] No clients left, stopping ffmpeg...", s.cfg.Name)
 				s.destroyFFmpeg()
 				ffmpegRunning = false
 			}
@@ -221,14 +221,14 @@ func (s *Streamer) createFFmpeg() (io.ReadCloser, io.ReadCloser, error) {
 	stdout, err := s.ffmpegCmd.StdoutPipe()
 	stderr, _ := s.ffmpegCmd.StderrPipe()
 	if err != nil {
-		log.Errorf("[%s]Error creating StdoutPipe: %v\n", s.cfg.Name, err)
+		log.Errorf("[%s] Error creating StdoutPipe: %v", s.cfg.Name, err)
 		s.ffmpegCmd = nil
 		return nil, nil, err
 	}
 
-	log.Infof("[%s]Starting ffmpeg (PIPE mode)...\n", s.cfg.Name)
+	log.Infof("[%s] Starting ffmpeg (PIPE mode)...", s.cfg.Name)
 	if err := s.ffmpegCmd.Start(); err != nil {
-		log.Errorf("[%s]Error starting ffmpeg: %v\n", s.cfg.Name, err)
+		log.Errorf("[%s] Error starting ffmpeg: %v", s.cfg.Name, err)
 		s.ffmpegCmd = nil
 		return nil, nil, err
 	}
@@ -242,25 +242,25 @@ func (s *Streamer) pipeRunner(streampipe io.ReadCloser, errpipe io.ReadCloser) {
 	}()
 
 	buf := make([]byte, 8*1024)
-	log.Infof("[%s]pipe-runner started...\n", s.cfg.Name)
+	log.Infof("[%s] Pipe-runner started...", s.cfg.Name)
 
 	go func() {
 		errbuf := make([]byte, 8*1024)
 
-		log.Infof("[%s]ffmpeg-errorpipe-runner start.\n", s.cfg.Name)
+		log.Infof("[%s] FFmpeg-errorpipe-runner start.", s.cfg.Name)
 		for {
 			select {
 			case <-s.done:
-				log.Infof("[%s]ffmpeg-errorpipe-runner stop.\n", s.cfg.Name)
+				log.Infof("[%s] FFmpeg-errorpipe-runner stop.", s.cfg.Name)
 				return
 			default:
 				n, err := errpipe.Read(errbuf)
 				if err == nil {
 					if n > 0 {
-						log.Infof("[%s]ffmpeg stderr: %s\n", s.cfg.Name, string(errbuf[:n]))
+						log.Infof("[%s] FFmpeg stderr: %s", s.cfg.Name, string(errbuf[:n]))
 					}
 				} else {
-					log.Debugf("[%s]ffmpeg-errorpipe-runner stop.\n", s.cfg.Name)
+					log.Debugf("[%s] FFmpeg-errorpipe-runner stop.", s.cfg.Name)
 					return
 				}
 			}
@@ -268,23 +268,23 @@ func (s *Streamer) pipeRunner(streampipe io.ReadCloser, errpipe io.ReadCloser) {
 
 	}()
 
-	log.Infof("[%s]ffmpeg-streampipe-runner start.\n", s.cfg.Name)
+	log.Infof("[%s] FFmpeg-streampipe-runner start.", s.cfg.Name)
 	for {
 		select {
 		case <-s.done:
-			log.Infof("[%s]ffmpeg-streampipe-runner stop.\n", s.cfg.Name)
+			log.Infof("[%s] FFmpeg-streampipe-runner stop.", s.cfg.Name)
 			return
 		default:
 			n, err := streampipe.Read(buf)
 			if err != nil {
-				log.Errorf("[%s]Error reading from ffmpeg PIPE: %s\n", s.cfg.Name, err)
+				log.Errorf("[%s] Error reading from ffmpeg PIPE: %v", s.cfg.Name, err)
 				s.mutex.Lock()
 				for client := range s.clients {
 					client.Close()
 					delete(s.clients, client)
 				}
 				s.mutex.Unlock()
-				log.Infof("[%s]ffmpeg-streampipe-runner stop.\n", s.cfg.Name)
+				log.Infof("[%s] FFmpeg-streampipe-runner stop.", s.cfg.Name)
 				return
 			}
 
@@ -313,9 +313,9 @@ func (s *Streamer) destroyFFmpeg() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if s.ffmpegCmd != nil {
-		log.Infof("[%s]Destroy ffmpeg process...\n", s.cfg.Name)
+		log.Infof("[%s] Destroy ffmpeg process...", s.cfg.Name)
 		if err := s.ffmpegCmd.Process.Kill(); err != nil {
-			log.Errorf("[%s]Failed to terminate ffmpeg-process: %v\n", s.cfg.Name, err)
+			log.Errorf("[%s] Failed to terminate ffmpeg-process: %v", s.cfg.Name, err)
 		}
 		s.ffmpegCmd = nil
 		s.restartCount = 0

@@ -24,6 +24,8 @@ func (a *Alarm) dailyMerger() {
 				if info.ModTime().Format(DATE_FORMAT) == time.Now().Format(DATE_FORMAT) {
 					return false
 				}
+			} else {
+				log.Errorf("[%s] %v", a.cfg.Name, err)
 			}
 			return !e.IsDir() && strings.HasSuffix(e.Name(), ".mp4")
 		})
@@ -42,6 +44,8 @@ func (a *Alarm) dailyMerger() {
 			entries = merge(entries, a.cfg)
 		}
 
+	} else {
+		log.Errorf("[%s] %v", a.cfg.Name, err)
 	}
 
 }
@@ -77,15 +81,17 @@ func merge(entries []os.DirEntry, cfg *config.ConfigCamera) []os.DirEntry {
 			case false:
 				filtred = append(filtred, merger)
 			}
+		} else {
+			log.Errorf("[MERGER] %v", err)
 		}
 	}
 
 	arcPath := filepath.Join(cfg.RecPath, "archive")
 	if _, err := os.Stat(arcPath); err != nil {
 		if err := os.MkdirAll(arcPath, 0775); err != nil {
-			log.Errorln("[REC] Error making archive dir.")
+			log.Errorf("[MERGER] Error making archive dir. %v", err)
 		} else {
-			log.Debugln("[REC] Created archive dir ok.")
+			log.Debugf("[MERGER] Created archive dir ok.")
 		}
 	}
 
@@ -96,7 +102,7 @@ func merge(entries []os.DirEntry, cfg *config.ConfigCamera) []os.DirEntry {
 	case 1:
 		src := filepath.Join(cfg.RecPath, merges[0])
 		if err := cp(src, outPath); err != nil {
-			log.Errorf("Copy error: %s", err)
+			log.Errorf("[MERGER] Copy error: %v", err)
 		}
 	default:
 		lpath := filepath.Join(cfg.RecPath, "merges.txt")
@@ -107,7 +113,7 @@ func merge(entries []os.DirEntry, cfg *config.ConfigCamera) []os.DirEntry {
 			lfile.Close()
 			cmd := exec.Command(cfg.FFmpegPath, "-f", "concat", "-safe", "0", "-i", lpath, "-c", "copy", outPath)
 			if err := cmd.Run(); err != nil {
-				fmt.Println(err)
+				log.Errorf("[MERGER] Failed to create archive. %v", err)
 			}
 			cmd.Process.Kill()
 			os.Remove(lpath)
