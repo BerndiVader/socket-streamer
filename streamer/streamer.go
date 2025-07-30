@@ -205,18 +205,34 @@ func (s *Streamer) ffmpegRunner() {
 }
 
 func (s *Streamer) createFFmpeg() (io.ReadCloser, io.ReadCloser, error) {
-	s.ffmpegCmd = exec.Command(s.cfg.FFmpegPath,
-		"-loglevel", "warning",
-		"-rtsp_transport", "tcp",
-		"-fflags", "+genpts",
-		"-analyzeduration", "500000",
-		"-probesize", "512k",
-		"-i", s.cfg.RTSPURL,
-		"-map", "0:v",
-		"-c:v", "copy",
-		"-f", "mpegts",
-		"pipe:1",
-	)
+
+	if len(s.cfg.FFMpegParams) > 0 {
+		log.Debugf("[%s] Found ffmpeg parameters. Using it.", s.cfg.Name)
+		args := []string{}
+		for _, p := range s.cfg.FFMpegParams {
+			args = append(args, p.Option)
+			if p.Value != "" {
+				args = append(args, p.Value)
+			}
+		}
+		args = append(args, "pipe:1")
+		s.ffmpegCmd = exec.Command(s.cfg.FFmpegPath, args...)
+
+	} else {
+		log.Infof("[%s] No ffmpeg parameters set. Using default.", s.cfg.Name)
+		s.ffmpegCmd = exec.Command(s.cfg.FFmpegPath,
+			"-loglevel", "warning",
+			"-rtsp_transport", "tcp",
+			"-fflags", "+genpts",
+			"-analyzeduration", "500000",
+			"-probesize", "512k",
+			"-i", s.cfg.RTSPURL,
+			"-map", "0:v",
+			"-c:v", "copy",
+			"-f", "mpegts",
+			"pipe:1",
+		)
+	}
 
 	stdout, err := s.ffmpegCmd.StdoutPipe()
 	stderr, _ := s.ffmpegCmd.StderrPipe()
