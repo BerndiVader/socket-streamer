@@ -208,13 +208,7 @@ func (s *Streamer) createFFmpeg() (io.ReadCloser, io.ReadCloser, error) {
 
 	if len(s.cfg.FFMpegParams) > 0 {
 		log.Debugf("[%s] Found ffmpeg parameters. Using it.", s.cfg.Name)
-		args := []string{}
-		for _, p := range s.cfg.FFMpegParams {
-			args = append(args, p.Option)
-			if p.Value != "" {
-				args = append(args, p.Value)
-			}
-		}
+		args := append([]string{}, s.cfg.FFMpegParams...)
 		args = append(args, "pipe:1")
 		s.ffmpegCmd = exec.Command(s.cfg.FFmpegPath, args...)
 
