@@ -34,21 +34,33 @@ The file `bv-streamer.conf` contains all relevant settings:
 ## Example configuration
 ```json
 {
-  "loglevel": "info",
-  "ws_host": "192.168.x.x",
-  "ws_port": 1510,
-  "cameras": [
+  "loglevel": "info",             // debug,info,warn,error,verborse
+  "ws_host": "111.111.111.111",   // IP for winsocket server
+  "ws_port": 1510,                // Port for winsocket server
+  "cameras": [                    // List of IP cams for streaming, tracking and recording
     {
-      "name": "Cam1_High",
-      "origin": "https://accepted.origin",
-      "ws_path": "/cam1_high",
-      "ffmpeg_path": "absolute/path/to/ffmpeg.exe",
-      "rtsp_url": "rtsp://user:pass@192.168.x.x:554/h264Preview_01_sub",
-      "addr": "192.168.x.x",
-      "user": "user",
-      "pass": "pass",
-      "tracking": true,
-      "rec_path": "absolute/path/to/records/cam1_high"
+      "name": "UNKNOWN", // Camera description
+      "origin": "https://origin.url", // Allowed origin to access the the livestreams
+      "ws_path": "/garage_low", // Winsocket path for the livestream & recording
+      "ffmpeg_path": "/absolute/path/to/ffmpeg", // Absolute path to ffmpeg executable
+      "ffmpeg_params": [          // For custom settings or generic IP cams.
+        "-loglevel","warning",
+        "-rtsp_transport","tcp",
+        "-i","rtsp://user:pass@192.168.x.x:554/h264Preview_01_sub",
+        "-map","0:v",
+        "-c:v","copy",
+        "-f","mpegts"
+      ],
+      "rtsp_url": "rtsp://user:pass@123.123.123.123:554/h264Preview_01_sub", // RTSP link to cam livestream
+      "addr": "123.123.123.123",  // IP adress of cam
+      "user": "user",             // Login credentials used for the api calls
+      "pass": "pass",             // 
+      "tracking": true, // Use tracking and recording on this cam
+      "rec_path": "/absolute/path/to/recordings", // Absolute path where the recordings should be stored.
+      "md_interval":1, // Interval for simple motion check, must be smaller or equal AI interval
+      "ai_interval":2, // Interval to check if the motion is a human/pet/etc...
+      "ai_cooldown":3, // Warmup for next AI check if there was a positiv ai check.
+      "rec_cooldown":8 // Cooldown for record stop if ai check is false.
     }
   ]
 }
