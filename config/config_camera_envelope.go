@@ -4,7 +4,7 @@ type ConfigCamera struct {
 	Name         string   `json:"name"`
 	RTSPURL      string   `json:"rtsp_url"`
 	WSPath       string   `json:"ws_path"`
-	Origin       string   `json:"origin"`
+	Origins      []string `json:"origins"`
 	FFmpegPath   string   `json:"ffmpeg_path"`
 	FFMpegParams []string `json:"ffmpeg_params"`
 	Address      string   `json:"addr"`

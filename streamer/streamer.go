@@ -66,7 +66,13 @@ func NewStreamer(c *config.ConfigCamera) *Streamer {
 	s.shutdownHandler()
 	s.upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
-			return strings.ToLower(r.Header.Get("Origin")) == s.cfg.Origin
+			header := strings.ToLower(r.Header.Get("Origin"))
+			for i := range s.cfg.Origins {
+				if s.cfg.Origins[i] == header {
+					return true
+				}
+			}
+			return false
 		},
 	}
 
