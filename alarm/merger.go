@@ -27,7 +27,7 @@ func (a *Alarm) dailyMerger() {
 			} else {
 				log.Errorf("[%s] %v", a.cfg.Name, err)
 			}
-			return !e.IsDir() && strings.HasSuffix(e.Name(), ".mp4")
+			return !e.IsDir() && strings.HasSuffix(e.Name(), ".ts")
 		})
 
 		sort.Slice(entries, func(a, b int) bool {
@@ -120,6 +120,10 @@ func merge(entries []os.DirEntry, cfg *config.ConfigCamera) []os.DirEntry {
 				for _, fname := range merges {
 					if err := os.Remove(filepath.Join(cfg.RecPath, fname)); err != nil {
 						log.Errorf("[%s] Failed to remove file %s - %v", cfg.Name, fname, err)
+					}
+					mp4File := filepath.Join(cfg.RecPath, strings.TrimSuffix(fname, ".ts")+".mp4")
+					if err := os.Remove(mp4File); err != nil {
+						log.Errorf("[%s] Failed to remove file %s - %v", cfg.Name, mp4File, err)
 					}
 				}
 			}

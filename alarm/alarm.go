@@ -38,9 +38,10 @@ type Alarm struct {
 	aiCheckInterval time.Duration
 	mdCheckInterval time.Duration
 
-	ffmpeg *exec.Cmd
-	stdin  io.WriteCloser
-	mu     sync.Mutex
+	currOut string
+	ffmpeg  *exec.Cmd
+	stdin   io.WriteCloser
+	mu      sync.Mutex
 }
 
 func NewAlarm(conf *config.ConfigCamera) *Alarm {
@@ -139,8 +140,10 @@ func (a *Alarm) startRec() {
 	defer a.mu.Unlock()
 
 	now := time.Now()
-	output := fmt.Sprintf("%s/rec_%s_%d.mp4", a.cfg.RecPath, a.cfg.Name, now.Unix())
+	output := fmt.Sprintf("%s/rec_%s_%d.ts", a.cfg.RecPath, a.cfg.Name, now.Unix())
 	output = strings.ReplaceAll(output, "\\", "/")
+
+	a.currOut = output
 
 	log.Debugf("[%s] Start recording: %s at %s", a.cfg.Name, output, now.Format(time.RFC3339))
 	if a.ffmpeg != nil {
@@ -215,6 +218,27 @@ func (a *Alarm) stopRec() {
 			a.ffmpeg.Process.Kill()
 			a.ffmpeg = nil
 		}
+	}
+
+	go a.remuxer(a.currOut)
+
+}
+
+func (a *Alarm) remuxer(current string) {
+	output := strings.TrimSuffix(current, ".ts") + ".mp4"
+	ffmpeg := exec.Command(
+		a.cfg.FFmpegPath,
+		"-y",
+		"-i", current,
+		"-c:v", "copy",
+		"-an",
+		"-movflags", "+faststart",
+		output,
+	)
+	if err := ffmpeg.Run(); err != nil {
+		log.Errorf("[%s] Remuxing failed: %v", a.cfg.Name, err)
+	} else {
+		log.Infof("[%s] Remuxed %s -> %s", a.cfg.Name, current, output)
 	}
 }
 
